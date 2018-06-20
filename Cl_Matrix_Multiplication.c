@@ -2,13 +2,14 @@
 #include <stdlib.h>
 #include <math.h>
 #include <sys/time.h>
-
 #include <CL/opencl.h>
+
 
 /**
 *   OpenCL Kernel source.
-    Takes Two Matrices A and B and outputs their multiplication in C
-*
+*   Takes Two Matrices A and B and outputs their multiplication in C
+*   
+*   @Author: Mahir Gulzar (mahirgulzar@gmail.com)
 **/
 const char *kernelSource =                                                              "\n"\
 "#pragma OPENCL EXTENSION cl_khr_fp64 : enable                                            \n"\
@@ -34,14 +35,13 @@ const char *kernelSource =                                                      
                                                                                             "\n";
 
 
-
-
 #define DEFAULT_SIZE 1024
 
 #define WORKERS 64
 
 int main(int argc, char* argv[])
 {
+
     const int k = DEFAULT_SIZE;
     const int m = DEFAULT_SIZE;
     const int n = DEFAULT_SIZE;
@@ -125,6 +125,15 @@ int main(int argc, char* argv[])
     err |= clSetKernelArg(kernel, 5, sizeof(cl_mem), (void*)&bufC);
 
 
+    //---------------------------------------------------------------------------------------
+
+    // For calculating performance factor
+    struct timeval Tvalue;
+    struct timezone dummy;
+    gettimeofday(&Tvalue, &dummy);
+    double starttime = (double)Tvalue.tv_sec + 1.0e-6*((double)Tvalue.tv_usec);
+
+    // Allocate local and global sizes for device with number of workers and rows and columns
     const size_t local[2] = { WORKERS, WORKERS };
     const size_t global[2] = { m, n };
 
@@ -135,8 +144,16 @@ int main(int argc, char* argv[])
     // Wait for the command queue to get serviced before reading back results
     clFinish(queue);
 
-    clEnqueueReadBuffer(queue, bufC, CL_TRUE, 0, m*n*sizeof(float), C, 0, NULL, NULL);
+    // Code Reference for performance calculation
+    // https://github.com/CNugteren/myGEMM
+    
+    gettimeofday(&Tvalue, &dummy);
+    double endtime = (double)Tvalue.tv_sec + 1.0e-6*((double)Tvalue.tv_usec);
+    double runtime = (endtime - starttime) / (double)1;
+    double gflop = ((long)k * (long)m * (long)n * 2) / (1000*1000*1000);
+    printf("\n>>> Done: took %.3lf seconds per run, %.1lf GFLOPS\n", runtime, gflop/runtime);
 
+    clEnqueueReadBuffer(queue, bufC, CL_TRUE, 0, m*n*sizeof(float), C, 0, NULL, NULL);
 
     printf("\n===========< Matrices multiplied >=============\n\n");
 
