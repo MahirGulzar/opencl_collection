@@ -36,7 +36,9 @@ const char *kernelSource =                                                      
 
 
 
-#define DEFAULT_SIZE 32
+#define DEFAULT_SIZE 1024
+
+#define WORKERS 64
 
 int main(int argc, char* argv[])
 {
@@ -44,7 +46,18 @@ int main(int argc, char* argv[])
     const int m = DEFAULT_SIZE;
     const int n = DEFAULT_SIZE;
 
-    printf("Default Size is : %d\n",DEFAULT_SIZE);
+    printf("\n===========< CL Matrix Multiplier >=============\n\n");
+    printf("Default Matrix Size is : %d\n\n",DEFAULT_SIZE);
+    printf("Number of Workers : %d\n\n",WORKERS);
+
+    printf("Choose Device type:\n1-CPU\n2-GPU\n");
+    char choice[2];
+    // fgets make sure user doesn't buffer overflow here (Just Secure Programming things :D)
+    fgets(choice,2,stdin);
+    int result=strcmp("1",choice);
+
+    // free(choice);
+
 
     // Fill A and B
 
@@ -53,11 +66,96 @@ int main(int argc, char* argv[])
     float* C = (float*)malloc(m*n*sizeof(float*));
     for (int i=0; i<m*k; i++) {
         A[i] = (float)rand() / (float)DEFAULT_SIZE;
-        printf("A[%d] = %f\n",i,A[i]);
+        // printf("A[%d] = %f\n",i,A[i]);
     }
     for (int i=0; i<k*n; i++) {
         B[i] = (float)rand() / (float)DEFAULT_SIZE;
-        printf("B[%d] = %f\n",i,B[i]);
+        // printf("B[%d] = %f\n",i,B[i]);
     }
 
+    cl_int err;
+
+    cl_platform_id platform =0;       // available platforms
+    cl_device_id device =0;           // device id
+    cl_context context;               // context
+    cl_command_queue queue;           // command queue
+    cl_program program;               // program
+    cl_kernel kernel;                 // kernel
+    cl_event event=NULL;
+
+    err = clGetPlatformIDs(1,&platform,NULL);
+    
+
+    if(result==0)
+    {
+        printf("\n\nYour choice is CPU\n");
+        err = clGetDeviceIDs(platform,CL_DEVICE_TYPE_CPU, 1 , &device, NULL);
+    }
+    else 
+    {
+        printf("\n\nYour choice is GPU\n");
+        err = clGetDeviceIDs(platform,CL_DEVICE_TYPE_GPU, 1 , &device, NULL);
+    }
+
+    context = clCreateContext(NULL,1,&device,NULL,NULL,NULL);
+    queue = clCreateCommandQueue(context,device,0,NULL);
+    program = clCreateProgramWithSource(context, 1, &kernelSource, NULL, NULL);
+    clBuildProgram(program, 0, NULL, "", NULL, NULL);
+
+
+    // make cl memory objects with respective read/write permissions reflected in kernel arguments
+    cl_mem bufA = clCreateBuffer(context, CL_MEM_READ_ONLY,  m*k*sizeof(float), NULL, NULL);
+    cl_mem bufB = clCreateBuffer(context, CL_MEM_READ_ONLY,  k*n*sizeof(float), NULL, NULL);
+    cl_mem bufC = clCreateBuffer(context, CL_MEM_READ_WRITE, m*n*sizeof(float), NULL, NULL);
+
+
+    // enqueue matrix buffers with local contents of the matrices A, B , C 
+    err = clEnqueueWriteBuffer(queue, bufA, CL_TRUE, 0, m*k*sizeof(float), A, 0, NULL, NULL);
+    err |= clEnqueueWriteBuffer(queue, bufB, CL_TRUE, 0, k*n*sizeof(float), B, 0, NULL, NULL);
+    err |= clEnqueueWriteBuffer(queue, bufC, CL_TRUE, 0, m*n*sizeof(float), C, 0, NULL, NULL);
+
+
+    // Set our kernel arguments
+    kernel = clCreateKernel(program, "cl_multiplier", NULL);
+    err = clSetKernelArg(kernel, 0, sizeof(int), (void*)&m);
+    err |= clSetKernelArg(kernel, 1, sizeof(int), (void*)&n);
+    err |= clSetKernelArg(kernel, 2, sizeof(int), (void*)&k);
+    err |= clSetKernelArg(kernel, 3, sizeof(cl_mem), (void*)&bufA);
+    err |= clSetKernelArg(kernel, 4, sizeof(cl_mem), (void*)&bufB);
+    err |= clSetKernelArg(kernel, 5, sizeof(cl_mem), (void*)&bufC);
+
+
+    const size_t local[2] = { WORKERS, WORKERS };
+    const size_t global[2] = { m, n };
+
+    // Run Kernel
+    err = clEnqueueNDRangeKernel(queue, kernel, 2, NULL, global, local, 0, NULL, &event);
+
+    // clWaitForEvents(1, &event);
+    // Wait for the command queue to get serviced before reading back results
+    clFinish(queue);
+
+    clEnqueueReadBuffer(queue, bufC, CL_TRUE, 0, m*n*sizeof(float), C, 0, NULL, NULL);
+
+
+    printf("\n===========< Matrices multiplied >=============\n\n");
+
+    // Clean-up memory
+    clReleaseMemObject(bufA);
+    clReleaseMemObject(bufB);
+    clReleaseMemObject(bufC);
+    clReleaseCommandQueue(queue);
+    clReleaseContext(context);
+    clReleaseProgram(program);
+    clReleaseKernel(kernel);
+    free(A);
+    free(B);
+    free(C);
+
+    return 0;
+
 }
+
+
+
+
