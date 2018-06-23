@@ -72,6 +72,7 @@ int main(int argc, char* argv[])
         B[i] = (float)rand() / (float)DEFAULT_SIZE;
         // printf("B[%d] = %f\n",i,B[i]);
     }
+    for (int i=0; i<m*n; i++) { C[i] = 0.0; }
 
     cl_int err;
 
@@ -146,7 +147,7 @@ int main(int argc, char* argv[])
 
     // Code Reference for performance calculation
     // https://github.com/CNugteren/myGEMM
-    
+
     gettimeofday(&Tvalue, &dummy);
     double endtime = (double)Tvalue.tv_sec + 1.0e-6*((double)Tvalue.tv_usec);
     double runtime = (endtime - starttime) / (double)1;
